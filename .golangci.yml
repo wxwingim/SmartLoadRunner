@@ -1,0 +1,158 @@
+version: "2"
+
+linters:
+  enable:
+    - bodyclose # Checks whether HTTP response body is closed successfully.
+    - dupl # Detects duplicate fragments of code.
+    - errcheck # Errcheck is a program for checking for unchecked errors in Go code. These unchecked errors can be critical bugs in some cases.
+    - errorlint # Find code that can cause problems with the error wrapping scheme introduced in Go 1.13.
+    - gosec # Inspects source code for security problems.
+    - gocyclo # Computes and checks the cyclomatic complexity of functions.
+    - govet # Vet examines Go source code and reports suspicious constructs. It is roughly the same as 'go vet' and uses its passes.
+    - ineffassign # Detects when assignments to existing variables are not used.
+    - misspell # Finds commonly misspelled English words.
+    - nolintlint # Reports ill-formed or insufficient nolint directives.
+    - predeclared # Find code that shadows one of Go's predeclared identifiers.
+    - revive # Fast, configurable, extensible, flexible, and beautiful linter for Go. Drop-in replacement of golint.
+    - sqlclosecheck # Checks that sql.Rows, sql.Stmt, sqlx.NamedStmt, pgx.Query are closed.
+    - staticcheck # It's the set of rules from staticcheck.
+    - unconvert # Remove unnecessary type conversions.
+    - unparam # Reports unused function parameters.
+    - unused # Checks Go code for unused constants, variables, functions and types.
+    - wrapcheck # Checks that errors returned from external packages are wrapped.
+  disable:
+    - nakedret
+
+linters-settings:
+  dupl:
+    threshold: 150 # Default
+
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    disable-default-exclusions: false
+    verbose: true
+
+  errorlint:
+    errorf: true
+    errorf-multi: true
+    asserts: true
+    comparison: true
+
+  misspell: 
+    locale: US
+    mode: restricted
+
+  nolintlint:
+    allow-unused: false
+    require-explanation: true
+    require-specific: true
+
+  unconvert:
+      fast-math: true
+      safe: true
+
+  unparam:
+    check-exported: false
+
+  unused:
+    post-statements-are-reads: true
+    exported-fields-are-used: false
+    generated-is-used: true
+
+  govet:
+    enable:
+      - shadow
+      - printf
+      - unusedresult
+      - loopclosure
+      - httpresponse
+      - lostcancel
+      - tests
+    enable-all: false
+    disable: []
+    settings:
+      shadow:
+        strict: true
+      printf:
+        funcs:
+          # Пример: дополнительные лог-функции, которые следует проверять
+          - (github.com/myorg/mypkg.Logger).Infof
+
+  wrapcheck:
+    extra-ignore-sigs:
+      - .CustomError(
+    ignore-sigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - errors.Join(
+      - .Wrap(
+      - .Wrapf(
+      - .WithMessage(
+      - .WithMessagef(
+      - .WithStack(
+    ignore-sig-regexps:
+      - \.New.*Error\(
+    ignore-package-globs:
+      - encoding/*
+      - github.com/pkg/*
+    report-internal-errors: true
+
+  gocyclo:
+    min-complexity: 15
+
+formatters:
+  enable:
+    - goimports # checks if the code and import statements are formatted according to the 'goimports' command
+    - golines # checks if code is formatted, and fixes long lines
+
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/wxwingim/SmartLoadRunner
+
+    golines:
+      # Target maximum line length.
+      max-len: 120
+
+issues:
+  max-issues-per-linter: 50
+  max-same-issues: 3
+  uniq-by-line: true
+  exclude-rules:
+    - path: ".*_gen.go"
+      linters:
+        - '*'
+    - path: ".*\\.pb\\.go"
+      linters:
+        - '*'
+    - linters:
+        - errcheck
+      text: "io.Copy"
+
+skip-dirs:
+  - vendor
+  - mocks
+  - testdata
+
+skip-files:
+  - ".*_mock.go"
+  - ".*\\.gen.go"
+  - ".*\\.pb\\.go"
+
+# Output configuration options.
+output:
+  formats:
+    text:
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true
+
+run:
+  timeout: 5m
+  relative-path-mode: gomod
+  tests: true
+  concurrency: 4
+  modules-download-mode: readonly
+  issues-exit-code: 1

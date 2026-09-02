@@ -1,0 +1,13 @@
+# Исключаем лишнее из build context Docker
+.git
+.gitignore
+bin/
+coverage.*
+*.log
+docs/
+.env
+.env.*
+!.env.example
+Taskfile.yaml
+.dockerignore
+LICENSE
