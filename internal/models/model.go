@@ -56,8 +56,6 @@ type Run struct {
 	StartAt        time.Time      `json:"start_at,omitempty"`
 	StopAt         time.Time      `json:"stop_at,omitempty"`
 	MetricsSummary map[string]any `json:"metrics_summary,omitempty"`
-	// AgentsSnapshot     string    ``
-	// ArtifactsLink      string    ``
 }
 
 // Agent — зарегистрированный воркер (runner), который выполняет VU.
@@ -70,7 +68,6 @@ type Agent struct {
 	PublicKey    string       `json:"public_key"`
 	RegisteredBy time.Time    `json:"registered_by"`
 	Metadata     string       `json:"metadata"`
-	// Labels map(region, instance_type)
 }
 
 // RunAllocation — распределение нагрузки между агентами.

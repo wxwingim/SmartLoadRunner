@@ -6,8 +6,8 @@
 //   - AppConfig   — базовые метаданные приложения
 //   - LogConfig   — настройки логирования
 //   - HTTPConfig  — HTTP API (использует coordinator)
-//   - DBConfig    — PostgreSQL (использует coordinator, задел)
-//   - RedisConfig — очереди/cache (задел)
+//   - DBConfig    — PostgreSQL (использует coordinator, резерв)
+//   - RedisConfig — очереди/cache (резерв)
 //   - RunnerConfig — параметры воркера нагрузки
 package config
 
@@ -54,9 +54,8 @@ type HTTPConfig struct {
 	IdleTimeout  int    `env:"SLR_HTTP_IDLE_TIMEOUT_SEC"  envDefault:"60"`
 }
 
-// DBConfig — PostgreSQL.
-// Используется координатором для хранения тестов, снапшотов и результатов.
-// На этапе MVP может быть заменен in-memory хранилищем (см. internal/store).
+// DBConfig — PostgreSQL для хранения тестов, снапшотов и результатов
+// (сейчас используется in-memory хранилище, секция зарезервирована).
 type DBConfig struct {
 	Host     string `env:"SLR_DB_HOST"     envDefault:"localhost"`
 	Port     int    `env:"SLR_DB_PORT"     envDefault:"5432"`
@@ -73,7 +72,7 @@ type DBConfig struct {
 }
 
 // RedisConfig — Redis для очередей и кеша.
-// Задел: координатор → runner коммуникация через очередь, кеш результатов.
+// Резерв: очередь задач для координатор → runner и кеш результатов (пока не используется).
 type RedisConfig struct {
 	Host     string `env:"SLR_REDIS_HOST"     envDefault:"localhost"`
 	Port     int    `env:"SLR_REDIS_PORT"     envDefault:"6379"`
@@ -84,12 +83,14 @@ type RedisConfig struct {
 // RunnerConfig — параметры воркера нагрузки.
 // Runner читает только эту секцию.
 type RunnerConfig struct {
-	// ListenAddr — адрес gRPC/HTTP сервера агента (задел).
+	// ListenAddr — адрес gRPC/HTTP сервера агента (резерв).
 	ListenAddr string `env:"SLR_RUNNER_LISTEN_ADDR" envDefault:":9090"`
 	// CoordinatorAddr — адрес координатора, к которому агент подключается.
 	CoordinatorAddr string `env:"SLR_RUNNER_COORDINATOR_ADDR" envDefault:"localhost:8080"`
 	// Capacity — максимальное число одновременных VU на агенте.
 	Capacity int `env:"SLR_RUNNER_CAPACITY" envDefault:"1000"`
+	// RequestTimeoutSec — таймаут одного HTTP-запроса VU к цели.
+	RequestTimeoutSec int `env:"SLR_RUNNER_REQUEST_TIMEOUT_SEC" envDefault:"30"`
 	// ReportIntervalSec — интервал отправки метрик координатору.
 	ReportIntervalSec int `env:"SLR_RUNNER_REPORT_INTERVAL_SEC" envDefault:"1"`
 	// DefaultScenarioFile — путь к YAML-сценарию по умолчанию (для локального запуска).

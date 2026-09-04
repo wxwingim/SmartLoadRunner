@@ -19,7 +19,7 @@ import (
 // Runner — агент-симулятор: раз в секунду генерит MetricBucket и POST-ит координатору.
 type Runner struct {
 	runID    string
-	coordURL string // http://localhost:8080
+	coordURL string // адрес координатора
 	interval time.Duration
 	vus      int
 	duration time.Duration
