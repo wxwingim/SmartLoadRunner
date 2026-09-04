@@ -44,7 +44,7 @@ func (h *Handlers) CreateTest(w http.ResponseWriter, r *http.Request) {
 		ID:           h.IDGen(),
 		Name:         s.Config.Name,
 		ScenarioYaml: string(body),
-		OwnerID:      "local", // спринт 1: без аутентификации
+		OwnerID:      "local", // без аутентификации
 		CreatedAt:    time.Now().UTC(),
 	}
 	if err := h.Store.SaveTest(r.Context(), t); err != nil {
@@ -159,8 +159,7 @@ func (h *Handlers) StreamMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	// отправляем заголовки сразу — клиент (curl/UI) должен увидеть установленный стрим
-	// ещё до первого события; иначе он висит, пока не придёт первая метрика.
+	// флешим заголовки до первого события, чтобы клиент сразу увидел установленный стрим
 	fl.Flush()
 
 	ch, cancel, err := h.Store.Subscribe(r.Context(), runID)
@@ -170,7 +169,7 @@ func (h *Handlers) StreamMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cancel()
 
-	// реплей уже накопленных метрик — клиент, подключившийся в середине, видит историю.
+	// реплей накопленных метрик новому подписчику
 	if metrics, err := h.Store.GetMetrics(r.Context(), runID); err == nil {
 		for _, m := range metrics {
 			writeSSE(w, fl, m)
@@ -201,7 +200,60 @@ func writeSSE(w http.ResponseWriter, fl http.Flusher, m *models.MetricBucket) {
 
 	//nolint:gosec // payload — JSON нашего же энкодера, не пользовательский HTML
 	if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
-		return // клиент отвалился — флашить некуда
+		return // клиент отключился
 	}
 	fl.Flush()
+}
+
+// RegisterAgent обрабатывает POST /api/agents.
+func (h *Handlers) RegisterAgent(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "read body", err)
+		return
+	}
+	var a models.Agent
+	if err := json.Unmarshal(body, &a); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid agent body", err)
+		return
+	}
+	if a.ID == "" {
+		a.ID = h.IDGen()
+	}
+	a.RegisteredBy = time.Now().UTC()
+	a.LastSeen = time.Now().UTC()
+	a.Status = models.UserOnline
+	if err := h.Store.RegisterAgent(r.Context(), &a); err != nil {
+		writeError(w, http.StatusInternalServerError, "register agent", err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, a)
+}
+
+// GetRunConfig обрабатывает GET /api/runs/{id}/config — агент забирает параметры прогона.
+func (h *Handlers) GetRunConfig(w http.ResponseWriter, r *http.Request) {
+	runID := r.PathValue("id")
+	run, err := h.Store.GetRun(r.Context(), runID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "run not found", err)
+		} else {
+			writeError(w, http.StatusInternalServerError, "get run", err)
+		}
+		return
+	}
+	test, err := h.Store.GetTest(r.Context(), run.TestID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "get test", err)
+		return
+	}
+	// Отдельный DTO: агенту не нужны owner/created_at/внутренние поля.
+	writeJSON(w, http.StatusOK, map[string]any{
+		"run_id":   run.ID,
+		"scenario": test.ScenarioYaml,
+		"vus":      run.VUs,
+		"duration": run.DurationSec,
+		"rate":     run.Rate,
+		"seed":     run.Seed,
+	})
 }

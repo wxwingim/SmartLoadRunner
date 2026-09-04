@@ -1,6 +1,6 @@
 // Package store предоставляет хранилища данных для coordinator.
 // InMemoryStore — потокобезопасное in-memory хранилище
-// и pub/sub для метрик запусков (используется на этапе MVP).
+// и pub/sub для метрик запусков.
 package store
 
 import (
@@ -35,6 +35,8 @@ type Storage interface {
 	GetMetrics(ctx context.Context, runID string) ([]*models.MetricBucket, error)
 	// Subscribe подписывается на метрики runID и возвращает канал и cancel-функцию.
 	Subscribe(ctx context.Context, runID string) (<-chan *models.MetricBucket, func(), error)
+	// RegisterAgent сохраняет агента; ErrAlreadyExists при дубликате ID.
+	RegisterAgent(ctx context.Context, a *models.Agent) error
 }
 
 // InMemoryStore — потокобезопасное in-memory хранилище и pub/sub метрик.
@@ -42,6 +44,7 @@ type InMemoryStore struct {
 	mu      sync.RWMutex
 	tests   map[string]*models.Test
 	runs    map[string]*models.Run
+	agents  map[string]*models.Agent
 	metrics map[string][]*models.MetricBucket
 	subs    map[string]map[string]chan *models.MetricBucket // runID -> subID -> ch
 	subMu   sync.Mutex
@@ -56,6 +59,7 @@ func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
 		tests:   make(map[string]*models.Test),
 		runs:    make(map[string]*models.Run),
+		agents:  make(map[string]*models.Agent),
 		metrics: make(map[string][]*models.MetricBucket),
 		subs:    make(map[string]map[string]chan *models.MetricBucket),
 	}
@@ -85,7 +89,7 @@ func (s *InMemoryStore) GetTest(_ context.Context, id string) (*models.Test, err
 	defer s.mu.RUnlock()
 	t, ok := s.tests[id]
 	if !ok {
-		return nil, fmt.Errorf("%w: test %q", ErrNotFound, id) // 404
+		return nil, fmt.Errorf("%w: test %q", ErrNotFound, id)
 	}
 	return t, nil
 }
@@ -138,10 +142,10 @@ func (s *InMemoryStore) subscribersSnapshot(runID string) []chan *models.MetricB
 
 // AddMetrics добавляет метрики к запуску.
 func (s *InMemoryStore) AddMetrics(_ context.Context, runID string, m *models.MetricBucket) error {
-	// 1) снимок подписчиков (отдельный мутекс, не вкладываем блокировки)
+	// снимок подписчиков под отдельным мутексом (без вложенных блокировок)
 	subs := s.subscribersSnapshot(runID)
 
-	// 2) проверка существования run + append — атомарно под s.mu
+	// атомарно с проверкой существования run делаем append под s.mu
 	s.mu.Lock()
 	if _, ok := s.runs[runID]; !ok {
 		s.mu.Unlock()
@@ -150,7 +154,7 @@ func (s *InMemoryStore) AddMetrics(_ context.Context, runID string, m *models.Me
 	s.metrics[runID] = append(s.metrics[runID], m)
 	s.mu.Unlock()
 
-	// 3) публикация вне блокировок, неблокирующая
+	// неблокирующая публикация подписчикам вне блокировок
 	for _, ch := range subs {
 		select {
 		case ch <- m:
@@ -204,4 +208,45 @@ func (s *InMemoryStore) Subscribe(_ context.Context, runID string) (<-chan *mode
 	}
 
 	return ch, cancel, nil
+}
+
+// RegisterAgent сохраняет агента; ErrAlreadyExists при дубликате ID.
+func (s *InMemoryStore) RegisterAgent(_ context.Context, a *models.Agent) error {
+	if a == nil {
+		return fmt.Errorf("store: register agent: nil agent")
+	}
+	if a.ID == "" {
+		return fmt.Errorf("store: register agent: empty id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.agents[a.ID]; exists {
+		return fmt.Errorf("%w: agent %q", ErrAlreadyExists, a.ID)
+	}
+	s.agents[a.ID] = a
+	return nil
+}
+
+// GetAgent возвращает агента по ID или ErrNotFound.
+func (s *InMemoryStore) GetAgent(_ context.Context, id string) (*models.Agent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	a, ok := s.agents[id]
+	if !ok {
+		return nil, fmt.Errorf("%w: agent %q", ErrNotFound, id)
+	}
+	return a, nil
+}
+
+// SetAgentStatus обновляет статус агента или возвращает ErrNotFound.
+func (s *InMemoryStore) SetAgentStatus(_ context.Context, id string, status models.OnlineStatus) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	a, ok := s.agents[id]
+	if !ok {
+		return fmt.Errorf("%w: agent %q", ErrNotFound, id)
+	}
+	a.Status = status
+	return nil
 }

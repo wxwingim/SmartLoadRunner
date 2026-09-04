@@ -1,4 +1,3 @@
-// принимает сценарий YAML, стартует run (здесь — fake metrics simulator)
 package main
 
 import (
@@ -43,7 +42,7 @@ func main() {
 		Handler:     httpapi.NewRouter(h),
 		ReadTimeout: time.Duration(cfg.HTTP.ReadTimeout) * time.Second,
 		IdleTimeout: time.Duration(cfg.HTTP.IdleTimeout) * time.Second,
-		// WriteTimeout: 0 — см. камень про SSE
+		// WriteTimeout не задаём: длинный SSE-стрим не должен прерываться по таймауту записи
 	}
 
 	go func() {

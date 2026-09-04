@@ -115,3 +115,108 @@ func TestStreamReceivesMetrics(t *testing.T) {
 		t.Fatal("timeout waiting for SSE event")
 	}
 }
+
+func TestRegisterAgentEndpoint(t *testing.T) {
+	srv, _ := setup(t)
+
+	req := mustReq(t, http.MethodPost, srv.URL+"/api/agents", `{"version":"test","capacity":100}`)
+	req.Header.Set("Content-Type", "application/json")
+	//nolint:gosec // адрес httptest-сервера, не SSRF
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Logf("close response body: %v", cerr)
+		}
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("register agent: status=%d", resp.StatusCode)
+	}
+	var a models.Agent
+	if err := json.NewDecoder(resp.Body).Decode(&a); err != nil {
+		t.Fatal(err)
+	}
+	if a.ID == "" || a.Version != "test" || a.Capacity != 100 || a.Status != models.UserOnline {
+		t.Fatalf("unexpected agent: %+v", a)
+	}
+}
+
+func TestGetRunConfigEndpoint(t *testing.T) {
+	srv, st := setup(t)
+	ctx := context.Background()
+
+	scenarioYaml := "config: {vus: 2, duration: 5, rate: 10, name: smoke}\nsteps: [{method: GET, url: https://example.com}]"
+	if err := st.SaveTest(ctx, &models.Test{
+		ID:           "test-1",
+		Name:         "smoke",
+		ScenarioYaml: scenarioYaml,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SaveRun(ctx, &models.Run{
+		ID:          "run-1",
+		TestID:      "test-1",
+		Status:      models.StateRunning,
+		VUs:         2,
+		DurationSec: 5,
+		Rate:        10,
+		Seed:        42,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	//nolint:gosec // адрес httptest-сервера, не SSRF
+	resp, err := http.DefaultClient.Do(mustReq(t, http.MethodGet, srv.URL+"/api/runs/run-1/config", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Logf("close response body: %v", cerr)
+		}
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get run config: status=%d", resp.StatusCode)
+	}
+	var cfg map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		t.Fatal(err)
+	}
+	if cfg["run_id"] != "run-1" || cfg["scenario"] != scenarioYaml {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+	if cfg["vus"] != float64(2) || cfg["duration"] != float64(5) {
+		t.Fatalf("unexpected numeric params: %+v", cfg)
+	}
+	if cfg["rate"] != float64(10) || cfg["seed"] != float64(42) {
+		t.Fatalf("unexpected numeric params: %+v", cfg)
+	}
+}
+
+func TestGetRunConfigEndpointRunNotFound(t *testing.T) {
+	srv, _ := setup(t)
+	//nolint:gosec // адрес httptest-сервера, не SSRF
+	resp, err := http.DefaultClient.Do(mustReq(t, http.MethodGet, srv.URL+"/api/runs/no-such/config", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if cerr := resp.Body.Close(); cerr != nil {
+			t.Logf("close response body: %v", cerr)
+		}
+	})
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("want 404, got %d", resp.StatusCode)
+	}
+}
+
+func mustReq(t *testing.T, method, url, body string) *http.Request {
+	t.Helper()
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return req
+}

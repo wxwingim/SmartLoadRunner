@@ -11,7 +11,7 @@ import (
 func New() string {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
-		// crypto/rand практически никогда не ошибается; падаем громко.
+		// crypto/rand практически не возвращает ошибок; при сбое — паника
 		panic(fmt.Sprintf("idgen: crypto/rand: %v", err))
 	}
 	return hex.EncodeToString(b[:])

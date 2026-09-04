@@ -47,7 +47,7 @@ func (p *Persistence) SaveTest(t *models.Test) error {
 
 // SaveRun пишет метадату запуска в data/runs/<id>.json.
 func (p *Persistence) SaveRun(r *models.Run) error {
-	data, err := json.MarshalIndent(r, "", "  ") // pretty — читаемо глазами
+	data, err := json.MarshalIndent(r, "", "  ") // pretty — человекочитаемый JSON
 	if err != nil {
 		return fmt.Errorf("marshal run: %w", err)
 	}
